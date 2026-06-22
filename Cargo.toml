@@ -1,0 +1,9 @@
+[package]
+name = "dns-sd"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { version = "4.6.1", features = ["derive"] }
+flume = "0.11.1"
+mdns-sd = "0.20.0"
