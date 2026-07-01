@@ -11,14 +11,29 @@ permissions:
 
 jobs:
   windows:
-    name: Windows release binaries
+    name: Windows release binaries (${{ matrix.arch }})
     runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            target: x86_64-pc-windows-msvc
+            vs_arch: amd64
+          - arch: arm64
+            target: aarch64-pc-windows-msvc
+            vs_arch: arm64
+          - arch: x86
+            target: i686-pc-windows-msvc
+            vs_arch: x86
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
 
       - name: Restore Cargo dependencies
         run: cargo fetch --locked
@@ -27,7 +42,11 @@ jobs:
         run: cargo test --locked
 
       - name: Build
-        run: cargo build --release --locked
+        shell: cmd
+        run: |
+          for /f "usebackq tokens=*" %%i in (`"%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -property installationPath`) do set "VS_PATH=%%i"
+          call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=${{ matrix.vs_arch }} -host_arch=amd64
+          cargo build --release --locked --target ${{ matrix.target }}
 
       - name: Build Windows packages
         shell: pwsh
@@ -42,11 +61,12 @@ jobs:
             $version = $version.Substring($version.LastIndexOf('#') + 1)
           }
 
-          $packageName = "dns-sd-$version-windows-$($env:RUNNER_ARCH.ToLowerInvariant())"
+          $packageName = "dns-sd-$version-windows-${{ matrix.arch }}"
           $packagePath = "dist/windows/$packageName"
+          $binaryPath = "target/${{ matrix.target }}/release/dns-sd.exe"
 
           New-Item -ItemType Directory -Force -Path $packagePath
-          Copy-Item target/release/dns-sd.exe $packagePath/
+          Copy-Item $binaryPath $packagePath/
           Copy-Item README.md $packagePath/
           Copy-Item LICENSE $packagePath/
           Compress-Archive -Path "$packagePath/*" -DestinationPath "dist/windows/$packageName.zip" -Force
@@ -54,7 +74,7 @@ jobs:
       - name: Upload Windows packages
         uses: actions/upload-artifact@v6
         with:
-          name: dns-sd-windows
+          name: dns-sd-windows-${{ matrix.arch }}
           path: dist/windows/*.zip
           if-no-files-found: error
 
