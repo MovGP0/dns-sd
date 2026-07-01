@@ -1,0 +1,178 @@
+name: Release Builds
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: Windows release binaries
+    runs-on: windows-2025
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Cargo dependencies
+        run: cargo fetch --locked
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Build Windows packages
+        shell: pwsh
+        run: |
+          $version = cargo pkgid
+          if ($version.Contains('@'))
+          {
+            $version = $version.Substring($version.LastIndexOf('@') + 1)
+          }
+          else
+          {
+            $version = $version.Substring($version.LastIndexOf('#') + 1)
+          }
+
+          $packageName = "dns-sd-$version-windows-$($env:RUNNER_ARCH.ToLowerInvariant())"
+          $packagePath = "dist/windows/$packageName"
+
+          New-Item -ItemType Directory -Force -Path $packagePath
+          Copy-Item target/release/dns-sd.exe $packagePath/
+          Copy-Item README.md $packagePath/
+          Copy-Item LICENSE $packagePath/
+          Compress-Archive -Path "$packagePath/*" -DestinationPath "dist/windows/$packageName.zip" -Force
+
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: dns-sd-windows
+          path: dist/windows/*.zip
+          if-no-files-found: error
+
+  macos:
+    name: macOS release binaries
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Cargo dependencies
+        run: cargo fetch --locked
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Build macOS packages
+        shell: bash
+        run: |
+          pkgid="$(cargo pkgid)"
+          version="${pkgid##*@}"
+          if [ "$version" = "$pkgid" ]; then
+            version="${pkgid##*#}"
+          fi
+
+          arch="$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
+          package_name="dns-sd-$version-macos-$arch"
+          package_path="dist/macos/$package_name"
+
+          mkdir -p "$package_path"
+          cp target/release/dns-sd "$package_path/"
+          cp README.md "$package_path/"
+          cp LICENSE "$package_path/"
+          tar -czf "dist/macos/$package_name.tar.gz" -C dist/macos "$package_name"
+
+      - name: Upload macOS packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: dns-sd-macos
+          path: dist/macos/*.tar.gz
+          if-no-files-found: error
+
+  linux:
+    name: Linux release binaries
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Restore Cargo dependencies
+        run: cargo fetch --locked
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Build Linux packages
+        shell: bash
+        run: |
+          pkgid="$(cargo pkgid)"
+          version="${pkgid##*@}"
+          if [ "$version" = "$pkgid" ]; then
+            version="${pkgid##*#}"
+          fi
+
+          arch="$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')"
+          package_name="dns-sd-$version-linux-$arch"
+          package_path="dist/linux/$package_name"
+
+          mkdir -p "$package_path"
+          cp target/release/dns-sd "$package_path/"
+          cp README.md "$package_path/"
+          cp LICENSE "$package_path/"
+          tar -czf "dist/linux/$package_name.tar.gz" -C dist/linux "$package_name"
+
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v6
+        with:
+          name: dns-sd-linux
+          path: dist/linux/*.tar.gz
+          if-no-files-found: error
+
+  github-release:
+    name: Publish GitHub release
+    runs-on: ubuntu-24.04
+    needs:
+      - windows
+      - macos
+      - linux
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - name: Download release packages
+        uses: actions/download-artifact@v8
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Publish release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          if gh release view "$TAG_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" release-assets/* --repo "$GH_REPO" --clobber
+          else
+            gh release create "$TAG_NAME" release-assets/* --repo "$GH_REPO" --generate-notes --title "$TAG_NAME"
+          fi
