@@ -1,9 +1,24 @@
 [package]
 name = "dns-sd"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 
 [dependencies]
 clap = { version = "4.6.1", features = ["derive"] }
 flume = "0.11.1"
 mdns-sd = "0.20.0"
+
+[profile.dev]
+opt-level = 0          # fastest codegen; keep debug builds unoptimized
+incremental = true     # cache intermediate artifacts for faster rebuilds
+codegen-units = 256    # allow more parallel code generation
+lto = false            # avoid expensive whole-program optimization
+debug = 1              # keep line tables only to reduce debug info size/time
+
+[profile.release]
+opt-level = "z"        # optimize for the smallest binary size
+lto = "fat"            # run whole-program optimization for better size wins
+codegen-units = 1      # improve optimization by using one codegen unit
+panic = "abort"        # omit unwinding support to reduce binary size
+strip = "symbols"      # remove symbols from the final binary
+debug = false          # do not emit debug info in release builds

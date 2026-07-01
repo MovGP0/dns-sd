@@ -1,0 +1,1 @@
+{"id":"int-a7042d4e90ac85e285eaa7b6c45fd9f4","kind":"field_change","created_at":"2026-07-01T20:31:27.2850417Z","actor":"Johann Dirry","issue_id":"dns-sd-lvi","extra":{"field":"status","new_value":"closed","old_value":"in_progress","reason":"Cargo profiles added, v0.1.2 version bump applied, release build and CLI smoke tests passed."}}
